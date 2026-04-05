@@ -15,6 +15,9 @@ st.markdown("批量导入或逐条添加赛事场馆信息")
 if "venues" not in st.session_state:
     st.session_state.venues = []
 
+if "demands" not in st.session_state:
+    st.session_state.demands = {}
+
 if "venue_form_data" not in st.session_state:
     st.session_state.venue_form_data = {
         "name": "",
