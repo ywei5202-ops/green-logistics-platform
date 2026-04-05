@@ -6,18 +6,54 @@ import plotly.express as px
 st.set_page_config(page_title="物资需求", page_icon="📦")
 
 
-def read_csv_with_encoding(uploaded_file):
-    """尝试多种编码读取CSV文件"""
-    encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
-    for encoding in encodings:
-        try:
-            return pd.read_csv(uploaded_file, encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-    # 如果都失败，尝试二进制读取后解码
-    uploaded_file.seek(0)
-    content = uploaded_file.read()
-    return pd.read_csv(content, encoding='utf-8', errors='replace')
+def read_file_with_encoding(uploaded_file):
+    """根据文件类型读取数据，支持 CSV/Excel/TXT/JSON"""
+    file_name = uploaded_file.name.lower()
+
+    try:
+        if file_name.endswith('.csv'):
+            # CSV 文件 - 尝试多种编码
+            encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+            for encoding in encodings:
+                try:
+                    return pd.read_csv(uploaded_file, encoding=encoding)
+                except UnicodeDecodeError:
+                    continue
+            # 如果都失败
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding='utf-8', errors='replace')
+
+        elif file_name.endswith(('.xlsx', '.xls')):
+            # Excel 文件
+            return pd.read_excel(uploaded_file, engine='openpyxl')
+
+        elif file_name.endswith('.txt'):
+            # TXT 文件 - 尝试多种编码，尝试制表符和逗号分隔
+            encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+            for encoding in encodings:
+                try:
+                    # 尝试制表符分隔
+                    try:
+                        return pd.read_csv(uploaded_file, encoding=encoding, sep='\t')
+                    except:
+                        pass
+                    # 尝试逗号分隔
+                    return pd.read_csv(uploaded_file, encoding=encoding, sep=',')
+                except UnicodeDecodeError:
+                    continue
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding='utf-8', sep='\t', errors='replace')
+
+        elif file_name.endswith('.json'):
+            # JSON 文件
+            return pd.read_json(uploaded_file)
+
+        else:
+            # 默认当 CSV 处理
+            return pd.read_csv(uploaded_file)
+
+    except Exception as e:
+        raise Exception(f"文件读取失败: {str(e)}")
 
 st.title("📦 Step 3：物资需求")
 st.markdown("为各场馆录入物资配送需求")
@@ -64,32 +100,34 @@ if not venue_names:
 
     # 显示导入提示
     st.info("""
-    **物资需求CSV格式：**
+    **物资需求文件格式：**
     - 必需列：`场馆名称`、`物资类别`、`物资名称`、`重量_kg`
     - 可选列：`体积_m3`、`紧急程度`、`备注`
     """)
     st.stop()
 
-tab1, tab2, tab3 = st.tabs(["📁 CSV批量导入", "✏️ 在线表单录入", "📋 需求汇总"])
+tab1, tab2, tab3 = st.tabs(["📁 文件批量导入", "✏️ 在线表单录入", "📋 需求汇总"])
 
 with tab1:
-    st.subheader("CSV文件批量导入物资需求")
+    st.subheader("文件批量导入物资需求")
 
     st.info("""
-    **CSV文件格式要求：**
+    **支持文件格式：**
+    - CSV (.csv)、Excel (.xlsx, .xls)、TXT (.txt)、JSON (.json)
     - `场馆名称` - 必填，需与已录入场馆名称一致
     - `物资类别` - 必填，如：器材设备、生活物资
     - `物资名称` - 必填，具体物资名称
     - `重量_kg` - 必填，重量（千克）
     - `体积_m3` - 可选，体积（立方米）
     - `紧急程度` - 可选：高/中/低
+    - 编码：自动识别（UTF-8/GBK/GB2312）
     """)
 
-    uploaded_file = st.file_uploader("选择CSV文件", type=["csv"])
+    uploaded_file = st.file_uploader("上传文件", type=["csv", "xlsx", "xls", "txt", "json"])
 
     if uploaded_file:
         try:
-            df = read_csv_with_encoding(uploaded_file)
+            df = read_file_with_encoding(uploaded_file)
             st.write("文件预览：")
             st.dataframe(df.head(10), hide_index=True)
 

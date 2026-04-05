@@ -8,18 +8,54 @@ from utils.amap_api import geocode
 st.set_page_config(page_title="场馆录入", page_icon="🏟️")
 
 
-def read_csv_with_encoding(uploaded_file):
-    """尝试多种编码读取CSV文件"""
-    encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
-    for encoding in encodings:
-        try:
-            return pd.read_csv(uploaded_file, encoding=encoding)
-        except UnicodeDecodeError:
-            continue
-    # 如果都失败，尝试二进制读取后解码
-    uploaded_file.seek(0)
-    content = uploaded_file.read()
-    return pd.read_csv(content, encoding='utf-8', errors='replace')
+def read_file_with_encoding(uploaded_file):
+    """根据文件类型读取数据，支持 CSV/Excel/TXT/JSON"""
+    file_name = uploaded_file.name.lower()
+
+    try:
+        if file_name.endswith('.csv'):
+            # CSV 文件 - 尝试多种编码
+            encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+            for encoding in encodings:
+                try:
+                    return pd.read_csv(uploaded_file, encoding=encoding)
+                except UnicodeDecodeError:
+                    continue
+            # 如果都失败
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding='utf-8', errors='replace')
+
+        elif file_name.endswith(('.xlsx', '.xls')):
+            # Excel 文件
+            return pd.read_excel(uploaded_file, engine='openpyxl')
+
+        elif file_name.endswith('.txt'):
+            # TXT 文件 - 尝试多种编码，尝试制表符和逗号分隔
+            encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+            for encoding in encodings:
+                try:
+                    # 尝试制表符分隔
+                    try:
+                        return pd.read_csv(uploaded_file, encoding=encoding, sep='\t')
+                    except:
+                        pass
+                    # 尝试逗号分隔
+                    return pd.read_csv(uploaded_file, encoding=encoding, sep=',')
+                except UnicodeDecodeError:
+                    continue
+            uploaded_file.seek(0)
+            return pd.read_csv(uploaded_file, encoding='utf-8', sep='\t', errors='replace')
+
+        elif file_name.endswith('.json'):
+            # JSON 文件
+            return pd.read_json(uploaded_file)
+
+        else:
+            # 默认当 CSV 处理
+            return pd.read_csv(uploaded_file)
+
+    except Exception as e:
+        raise Exception(f"文件读取失败: {str(e)}")
 
 st.title("🏟️ Step 2：场馆录入")
 st.markdown("批量导入或逐条添加赛事场馆信息")
@@ -43,16 +79,17 @@ VENUE_TYPES = ["比赛场馆", "训练场馆", "媒体中心", "运动员村", "
 tab1, tab2 = st.tabs(["📁 批量导入(CVS)", "✏️ 在线表单"])
 
 with tab1:
-    st.subheader("CSV文件批量导入")
+    st.subheader("文件批量导入")
 
     st.info("""
-    **CSV文件格式要求：**
+    **支持文件格式：**
+    - CSV (.csv)、Excel (.xlsx, .xls)、TXT (.txt)、JSON (.json)
     - 必须包含 `名称` 和 `地址` 列
     - 可选列：`类型`、`容量`、`日均需求量_kg`
-    - 编码：UTF-8
+    - 编码：自动识别（UTF-8/GBK/GB2312）
     """)
 
-    uploaded_file = st.file_uploader("选择CSV文件", type=["csv"])
+    uploaded_file = st.file_uploader("上传文件", type=["csv", "xlsx", "xls", "txt", "json"])
 
     api_key_batch = st.text_input(
         "高德API密钥 (批量地理编码)",
@@ -76,11 +113,11 @@ with tab1:
             st.error("请输入API密钥")
         else:
             try:
-                df = read_csv_with_encoding(uploaded_file)
+                df = read_file_with_encoding(uploaded_file)
 
                 # 检查必需列
                 if "名称" not in df.columns or "地址" not in df.columns:
-                    st.error("CSV文件必须包含「名称」和「地址」列")
+                    st.error("文件必须包含「名称」和「地址」列")
                 else:
                     with st.spinner(f"正在处理 {len(df)} 个场馆..."):
                         progress_bar = st.progress(0)
